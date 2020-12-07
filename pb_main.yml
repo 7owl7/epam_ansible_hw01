@@ -1,0 +1,81 @@
+---
+- name: EPAM devops course - ansible module - homework task 1.1
+  hosts:
+    - node1.example.com
+    - node2.example.com
+  become: yes
+  become_user: root
+  tasks:
+    - name: Install reguired system packages
+      yum:
+        name:
+          - vim
+          - mc
+        state: present
+    - name: Install the Apache package
+      yum:
+        name: httpd
+        state: present
+    - name: Enable & start httpd service
+      service:
+        name: httpd
+        enabled: yes
+        state: started
+    - name: Get services facts
+      service_facts:
+      register: services_facts
+    - name: Get the httpd service state
+      debug:
+        msg: "The httpd service is {{ services_facts.ansible_facts.services['httpd.service'].state }}"
+    - name: Copy index.html file to /var/www/html folder
+      copy:
+        src: index.html
+        dest:  /var/www/html/index.html
+        owner: root
+        group: apache
+        mode: '0644'
+    - name: Allow incoming connections to our web server
+      iptables:
+        chain: INPUT
+        action: insert
+        protocol: tcp
+        destination_port: "{{ item }}"
+        jump: ACCEPT
+      loop:
+        - http
+        - https
+    - name: Allow outgoing connections from our web server
+      iptables:
+        chain: OUTPUT
+        action: insert
+        protocol: tcp
+        source_port: "{{ item }}"
+        jump: ACCEPT
+      loop:
+        - http
+        - https
+
+- name: EPAM devops course - ansible module - homework task 1.2
+  hosts:
+    - node1.example.com
+    - node2.example.com
+  become: yes
+  become_user: root
+  tasks:
+  - name: Stop & disable the  NetworkManager service
+    service:
+      name: NetworkManager
+      enabled: no
+      state: stopped
+    when: services_facts.ansible_facts.services['NetworkManager.service'] is defined
+  - name: Add boot options to /etc/default/grub file
+    lineinfile:
+      path: /etc/default/grub
+      regexp: "^GRUB_CMDLINE_LINUX=.*"
+      line: "GRUB_CMDLINE_LINUX=\"console=tty0 crashkernel=auto console=ttyS0 net.ifnames=0 biosdevname=0\""
+      state: present
+      backup: yes
+    register: default_grub_cfg
+  - name: Run grub2-mkconfig
+    command: grub2-mkconfig -o /boot/grub2/grub.cfg
+    when: default_grub_cfg.changed
